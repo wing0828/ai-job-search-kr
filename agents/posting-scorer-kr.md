@@ -1,6 +1,6 @@
 ---
 name: posting-scorer-kr
-description: 여러 채용공고 URL을 한꺼번에 가져와 지원자 프로필 기준으로 게이트 판정과 적합도 점수를 매기고 JSON으로 돌려준다. 공고 검색 결과를 추려 볼 때 job-application-kr 스킬이 호출(5건 안팎씩 나눠 병렬 실행). 읽기·가져오기만 하고 파일을 만들거나 고치지 않는다.
+description: 여러 채용공고 URL을 한꺼번에 가져와 지원자 프로필 기준으로 게이트 판정과 적합도 점수를 매기고 JSON으로 돌려준다. 공고 검색 결과를 추려 볼 때 job-application-kr 스킬이 호출(사람인·잡코리아는 한 에이전트가 일괄 순차 처리, 그 밖의 사이트만 나눠 병렬). 읽기·가져오기만 하고 파일을 만들거나 고치지 않는다.
 tools: Read, Glob, WebFetch, WebSearch, Bash
 ---
 
@@ -15,10 +15,13 @@ tools: Read, Glob, WebFetch, WebSearch, Bash
 - 한 공고의 내용이 다른 공고의 점수에 영향을 주지 않게 한다.
 
 ## Bash 사용 범위
-`curl -s -m 15 https://<도메인>/robots.txt` 와 `defuddle parse '<URL>' --md` 만 쓴다.
+`python <스킬폴더>/scripts/jobcrawl.py detail '<URL1>' '<URL2>' ...`(사람인·잡코리아 URL을 모아 한 번에), `curl -s -m 15 https://<도메인>/robots.txt`, `defuddle parse '<URL>' --md` 만 쓴다. 스킬 폴더는 Glob으로 `**/job-application-kr/SKILL.md`를 찾아 정한다.
+
+## 입력 형태
+URL 목록 대신 `jobcrawl.py search --json` 결과(JSON 배열)를 받을 수도 있다. 그때는 목록의 회사·공고명·지역·경력·마감일을 먼저 보고 게이트가 분명히 FAIL인 공고(지역·경력 불일치, 마감 지남)는 상세를 열지 않고 `scored` + 해당 게이트 FAIL로 처리해 요청 수를 줄인다.
 
 ## 공고별 처리
-1. 가져오기: 스킬의 `references/07-web-research.md` 순서(robots.txt 확인 → 허용이면 defuddle, 아니면 WebFetch 평가용 → 실패 시 WebSearch로 회사 원본). 선별 단계라 요약본도 괜찮다.
+1. 가져오기: 사람인·잡코리아는 상세가 필요한 URL을 모아 `jobcrawl.py detail URL1 URL2 ...`로 **한 번에** 실행한다(최대 20건, 스크립트가 3초 간격으로 순차 처리). URL마다 따로 여러 번 실행하지 않는다. 그 밖은 스킬의 `references/07-web-research.md` 순서(robots.txt 확인 → 허용이면 defuddle, 아니면 WebFetch 평가용 → 실패 시 WebSearch로 회사 원본). 선별 단계라 요약본도 괜찮다.
 2. 상태: `scored`(본문 확보), `expired`(마감일이 오늘보다 앞이거나 "마감" 표시가 확인됨), `unreachable`(모든 방법 실패. 마감으로 단정하지 않음)
 3. `scored`면 스킬의 `references/03-job-evaluation.md`대로:
    - 게이트: 자격요건, 어학, 근무지 → `PASS`/`FLAG`/`FAIL`. 정보가 없으면 `FLAG`(미확인)

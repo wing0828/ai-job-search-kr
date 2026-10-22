@@ -14,7 +14,10 @@ tools: Read, Glob, Grep, WebFetch, WebSearch, Bash
 - 회사 조사는 회사명을 검색해 공식 도메인, DART, 언론 기사에서 시작한다. 검색 스니펫은 근거가 아니라 단서다. 페이지를 직접 열어 확인한 것만 "확인됨"으로 쓴다.
 
 ## Bash 사용 범위
-글자수 측정만: `python <스킬폴더>/scripts/charcount.py <파일> --sections` (Windows는 python 전체 경로 필요할 수 있음). 다른 명령은 쓰지 않는다.
+아래 두 스크립트만 쓴다(Windows는 python 전체 경로 필요할 수 있음). 다른 명령은 쓰지 않는다.
+- 글자수: `python <스킬폴더>/scripts/charcount.py <파일> --sections`
+- 자동 검사: `python <스킬폴더>/scripts/precheck.py <문서들> --target <지원 회사명> [--tracker <tracker.csv>] [--blind]`
+스크립트가 잡은 ERROR는 그대로 HIGH로 올리고, WARN은 문맥을 보고 판단한다.
 
 ## 검수 항목 (이 순서)
 1. **사실 근거**: 문서의 모든 경력·수치·자격·도구·수식어를 프로필과 한 줄씩 대조. 프로필보다 강한 표현(예: "API 개발"→"REST API 설계", "전역"→"만기전역", "MySQL"→"SQL 튜닝")도 근거 없음으로 본다.
