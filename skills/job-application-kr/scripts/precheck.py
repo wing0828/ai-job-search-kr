@@ -15,6 +15,7 @@
 """
 import argparse
 import csv
+import os
 import re
 import sys
 import unicodedata
@@ -191,10 +192,28 @@ def run(path: str, blind: bool, companies: list, target: str = "") -> list:
     return sorted(findings, key=lambda f: (order[f.level], f.line))
 
 
+def console_encoding(stream) -> str:
+    """출력 인코딩. 셸마다 기대가 달라서 한 가지로 고정하면 한쪽에서 한글이 깨진다.
+    - PYTHONIOENCODING을 지정했으면 그대로
+    - Git Bash·WSL·맥/리눅스 터미널(MSYSTEM, TERM 있음) → UTF-8
+    - PowerShell·cmd → 현재 인코딩(한국어 Windows는 cp949)이 한글을 쓸 수 있으면 그대로
+    """
+    current = stream.encoding or "utf-8"
+    if os.environ.get("PYTHONIOENCODING"):
+        return current
+    if os.environ.get("MSYSTEM") or os.environ.get("TERM"):
+        return "utf-8"
+    try:
+        "한글".encode(current)
+        return current
+    except (LookupError, UnicodeEncodeError):
+        return "utf-8"
+
+
 def main(argv=None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
-            stream.reconfigure(encoding="utf-8")
+            stream.reconfigure(encoding=console_encoding(stream), errors="replace")
     p = argparse.ArgumentParser(description="자소서·이력서 제출 전 자동 검사")
     p.add_argument("files", nargs="+")
     p.add_argument("--blind", action="store_true", help="블라인드 채용 규칙 적용")

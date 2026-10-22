@@ -2,7 +2,7 @@
 """채용 포털 검색 결과 크롤러 (개인 구직용, 표준 라이브러리만 사용).
 
 사용법:
-    python jobcrawl.py search "백엔드 개발자" [--site saramin,jobkorea] [--pages 1] [--json]
+    python jobcrawl.py search "백엔드 개발자" [--site saramin,jobkorea,jobalio] [--pages 1] [--json] [--out 결과.json]
     python jobcrawl.py detail <URL> [<URL> ...] [--max-chars 6000]
     python jobcrawl.py robots <URL>
 
@@ -383,11 +383,38 @@ def parse_jobkorea(page: str, today: date) -> list:
     return jobs
 
 
+def parse_jobalio(page: str, today: date) -> list:
+    """잡알리오(공공기관 채용정보) 목록 표. 열: 선택, 번호, 채용제목, 기관명, 근무지, 고용형태, 등록일, 마감일, 상태."""
+    jobs = []
+    for row in re.findall(r"<tr>(.*?)</tr>", page, re.S):
+        link = re.search(r'recruitview\.do\?idx=(\d+)"[^>]*>(.*?)</a>', row, re.S)
+        cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)
+        if not link or len(cells) < 9:
+            continue
+        due = re.search(r"(\d{2})\.(\d{2})\.(\d{2})", cells[7])
+        deadline = f"20{due.group(1)}-{due.group(2)}-{due.group(3)}" if due else clean(cells[7])
+        jobs.append({
+            "site": "jobalio",
+            "title": clean(link.group(2)),
+            "company": clean(cells[3]),
+            "location": clean(cells[4]),
+            "career": "", "education": "",
+            "employment": clean(cells[5]),
+            "deadline": deadline,
+            "url": f"https://job.alio.go.kr/recruitview.do?idx={link.group(1)}",
+            "is_ad": False,
+        })
+    return jobs
+
+
 SITES = {
     "saramin": ("https://www.saramin.co.kr/zf_user/search/recruit?searchword={q}"
                 "&recruitPage={page}&recruitPageCount=40", parse_saramin),
     "jobkorea": ("https://www.jobkorea.co.kr/Search/?stext={q}&tabType=recruit&Page_No={page}",
                  parse_jobkorea),
+    # 공공기관 채용정보시스템. ing=2는 '진행중'만.
+    "jobalio": ("https://job.alio.go.kr/recruit.do?pageNo={page}&keyword={q}&ing=2&pageSet=50",
+                parse_jobalio),
 }
 
 
@@ -435,11 +462,11 @@ def search_exit_code(jobs: list, status: dict, site_count: int) -> int:
 
 
 def to_table(jobs: list) -> str:
-    rows = ["| # | 사이트 | 회사 | 공고 | 지역 | 경력 | 마감 | 광고 | URL |",
-            "|---|---|---|---|---|---|---|---|---|"]
+    rows = ["| # | 사이트 | 회사 | 공고 | 지역 | 경력 | 고용형태 | 마감 | 광고 | URL |",
+            "|---|---|---|---|---|---|---|---|---|---|"]
     for i, j in enumerate(jobs, 1):
         cells = [str(i), j["site"], j["company"], j["title"], j["location"], j["career"],
-                 j["deadline"] or "미확인", "AD" if j["is_ad"] else "", j["url"]]
+                 j["employment"], j["deadline"] or "미확인", "AD" if j["is_ad"] else "", j["url"]]
         rows.append("| " + " | ".join(c.replace("|", "/") for c in cells) + " |")
     return "\n".join(rows)
 
@@ -483,10 +510,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("search", help="키워드로 공고 목록 수집")
     s.add_argument("keyword")
-    s.add_argument("--site", default="saramin,jobkorea", help="saramin,jobkorea 중 쉼표로")
+    s.add_argument("--site", default="saramin,jobkorea,jobalio",
+                   help="saramin(사람인), jobkorea(잡코리아), jobalio(잡알리오·공공기관) 중 쉼표로")
     s.add_argument("--pages", type=int, default=1, help=f"사이트당 페이지 수 (최대 {MAX_PAGES})")
     s.add_argument("--exclude-ads", action="store_true", help="광고(AD) 표시 공고 제외")
     s.add_argument("--json", action="store_true", help="JSON으로 출력")
+    s.add_argument("--out", help="결과를 UTF-8 파일로 저장 (Windows에서 > 리다이렉트 대신 권장)")
     r = sub.add_parser("robots", help="URL이 robots.txt상 허용되는지 확인")
     r.add_argument("url")
     d = sub.add_parser("detail", help=f"공고 상세 본문 텍스트 추출 (한 번에 최대 {MAX_DETAILS}건, 순차)")
@@ -495,11 +524,29 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def console_encoding(stream) -> str:
+    """출력 인코딩. 셸마다 기대가 달라서 한 가지로 고정하면 한쪽에서 한글이 깨진다.
+    - PYTHONIOENCODING을 지정했으면 그대로
+    - Git Bash·WSL·맥/리눅스 터미널(MSYSTEM, TERM 있음) → UTF-8
+    - PowerShell·cmd → 현재 인코딩(한국어 Windows는 cp949)이 한글을 쓸 수 있으면 그대로
+    """
+    current = stream.encoding or "utf-8"
+    if os.environ.get("PYTHONIOENCODING"):
+        return current
+    if os.environ.get("MSYSTEM") or os.environ.get("TERM"):
+        return "utf-8"
+    try:
+        "한글".encode(current)
+        return current
+    except (LookupError, UnicodeEncodeError):
+        return "utf-8"
+
+
 def main(argv: Optional[list] = None, fetcher: Optional[PoliteFetcher] = None,
          today: Optional[date] = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
-            stream.reconfigure(encoding="utf-8")
+            stream.reconfigure(encoding=console_encoding(stream), errors="replace")
     args = build_parser().parse_args(argv)
     fetcher = fetcher or PoliteFetcher()
     today = today or date.today()
@@ -525,7 +572,16 @@ def main(argv: Optional[list] = None, fetcher: Optional[PoliteFetcher] = None,
     jobs, errors, status = search(fetcher, args.keyword, sites, args.pages, today)
     if args.exclude_ads:
         jobs = [j for j in jobs if not j["is_ad"]]
-    print(json.dumps(jobs, ensure_ascii=False, indent=2) if args.json else to_table(jobs))
+    output = json.dumps(jobs, ensure_ascii=False, indent=2) if args.json else to_table(jobs)
+    if args.out:
+        try:
+            Path(args.out).write_text(output + "\n", encoding="utf-8")
+        except OSError as e:
+            print(f"저장 실패: {e}", file=sys.stderr)
+            return 2
+        print(f"저장: {args.out} ({len(jobs)}건)")
+    else:
+        print(output)
     for err in errors:
         print(f"경고: {err}", file=sys.stderr)
     return search_exit_code(jobs, status, len(sites))

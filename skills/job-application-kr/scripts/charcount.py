@@ -19,11 +19,13 @@
 종료 코드: 0 통과, 1 제한 초과, 2 입력 오류, 3 제한을 알 수 없는 문항 있음.
 """
 import argparse
+import os
 import re
 import sys
 import unicodedata
 from typing import NamedTuple, Optional
 
+LOW_FILL_PERCENT = 70
 BASIS_LABELS = {"with": "공백 포함", "without": "공백 제외", "bytes": "2바이트 기준"}
 HEADING_RE = re.compile(r"^(#{2,3})\s+(.*)$")
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
@@ -120,6 +122,9 @@ def report(text: str, limit: Optional[int], basis: str) -> bool:
         return False
     ratio = used / limit * 100 if limit else 0
     print(f"통과: {label} {used}/{limit} ({ratio:.0f}%, {limit - used}자 남음)")
+    if limit and ratio < LOW_FILL_PERCENT:
+        print(f"  참고: 제한의 {LOW_FILL_PERCENT}% 미만이라 성의 없어 보일 수 있음. 보통 90% 이상 채운다"
+              " (없는 내용으로 채우지 말고 사례의 행동·결과를 구체화).")
     return True
 
 
@@ -161,6 +166,24 @@ def run_sections(text: str, cli_limit: Optional[int], basis: str) -> int:
     return 3 if unknown or empty else 0
 
 
+def console_encoding(stream) -> str:
+    """출력 인코딩. 셸마다 기대가 달라서 한 가지로 고정하면 한쪽에서 한글이 깨진다.
+    - PYTHONIOENCODING을 지정했으면 그대로
+    - Git Bash·WSL·맥/리눅스 터미널(MSYSTEM, TERM 있음) → UTF-8
+    - PowerShell·cmd → 현재 인코딩(한국어 Windows는 cp949)이 한글을 쓸 수 있으면 그대로
+    """
+    current = stream.encoding or "utf-8"
+    if os.environ.get("PYTHONIOENCODING"):
+        return current
+    if os.environ.get("MSYSTEM") or os.environ.get("TERM"):
+        return "utf-8"
+    try:
+        "한글".encode(current)
+        return current
+    except (LookupError, UnicodeEncodeError):
+        return "utf-8"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="자기소개서 글자수 측정")
     parser.add_argument("path", help="텍스트 파일 경로, 표준입력은 -")
@@ -178,7 +201,7 @@ def main() -> int:
 
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
-            stream.reconfigure(encoding="utf-8")
+            stream.reconfigure(encoding=console_encoding(stream), errors="replace")
     if args.path == "-" and hasattr(sys.stdin, "reconfigure"):
         sys.stdin.reconfigure(encoding="utf-8")
 

@@ -16,6 +16,7 @@ import argparse
 import csv
 import hashlib
 import html
+import os
 import re
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -181,10 +182,28 @@ th{{font-weight:600;color:var(--muted);font-size:13px}} a{{color:var(--accent)}}
 """
 
 
+def console_encoding(stream) -> str:
+    """출력 인코딩. 셸마다 기대가 달라서 한 가지로 고정하면 한쪽에서 한글이 깨진다.
+    - PYTHONIOENCODING을 지정했으면 그대로
+    - Git Bash·WSL·맥/리눅스 터미널(MSYSTEM, TERM 있음) → UTF-8
+    - PowerShell·cmd → 현재 인코딩(한국어 Windows는 cp949)이 한글을 쓸 수 있으면 그대로
+    """
+    current = stream.encoding or "utf-8"
+    if os.environ.get("PYTHONIOENCODING"):
+        return current
+    if os.environ.get("MSYSTEM") or os.environ.get("TERM"):
+        return "utf-8"
+    try:
+        "한글".encode(current)
+        return current
+    except (LookupError, UnicodeEncodeError):
+        return "utf-8"
+
+
 def main(argv=None, today: Optional[date] = None, now: Optional[datetime] = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
-            stream.reconfigure(encoding="utf-8")
+            stream.reconfigure(encoding=console_encoding(stream), errors="replace")
     p = argparse.ArgumentParser(description="지원 현황 도구")
     sub = p.add_subparsers(dest="cmd", required=True)
     for name in ("list", "ics", "report"):

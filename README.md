@@ -2,7 +2,7 @@
 
 한국 채용시장용 AI 구직·지원 스킬. Claude Code와 Codex CLI에서 쓰는 `SKILL.md` 형식이다.
 
-공고 찾기(사람인·잡코리아 크롤러) → 적합도 평가 → 이력서·경력기술서·자기소개서 작성 → 제출 전 자동 검사 → 마감 관리 → 면접 준비 → 연봉 실수령액 비교까지 한 흐름으로 돕는다. 스크립트는 파이썬 표준 라이브러리만 쓰고, API 키나 유료 서비스가 필요 없다.
+공고 찾기(사람인·잡코리아·잡알리오 크롤러) → 적합도 평가 → 이력서·경력기술서·자기소개서 작성 → 제출 전 자동 검사 → 마감 관리 → 면접 준비 → 연봉 실수령액 비교까지 한 흐름으로 돕는다. 스크립트는 파이썬 표준 라이브러리만 쓰고, API 키나 유료 서비스가 필요 없다.
 
 > [MadsLorentzen/ai-job-search](https://github.com/MadsLorentzen/ai-job-search) (MIT)를 한국 채용 관행에 맞게 다시 쓴 파생 작업이다. 원본은 덴마크 시장(Jobindex, Jobnet 등)과 LaTeX 기반 CV·커버레터 중심이다.
 
@@ -13,7 +13,7 @@
 | CV + 커버레터 (LaTeX) | 이력서 + 경력기술서 + **문항형 자기소개서** (Markdown → PDF/DOCX, 지정 양식 우선) |
 | 시민권·체류 게이트 | **병역, 학력·졸업예정, 필수 자격증, 경력 연차, 지역인재·보훈, 체류자격** 게이트 |
 | 언어 수준 게이트 | **공인 어학점수 커트라인·인정 기간** 포함 어학 게이트 |
-| 덴마크 포털 CLI | **사람인·잡코리아 크롤러** (robots.txt 준수, 요청 간격 3초) + 검색 쿼리 템플릿 |
+| 덴마크 포털 CLI | **사람인·잡코리아·잡알리오(공공기관) 크롤러** (robots.txt 준수, 요청 간격 3초) + 검색 쿼리 템플릿 |
 | 연봉 지수 엑셀 도구 | **연봉 실수령액·오퍼 비교 계산기** (2026년 4대보험 요율, 퇴직금 포함 연봉 환산) |
 | 영문 작성 규칙 | 두괄식, 소제목, 한국 자소서 상투어 금지 목록, **블라인드 채용 규칙** + **제출 전 자동 검사기** |
 | 일반 면접 | 인적성(GSAT·SKCT 등), NCS, 코딩테스트, 실무·임원·PT·토론 면접, **처우협의** |
@@ -43,13 +43,13 @@ skills/job-application-kr/
 │   ├── 07-web-research.md           # 공고 수집·크롤러·포털·신뢰 경계
 │   └── 08-question-types.md         # 문항 유형집·NCS·HWP 양식
 ├── scripts/
-│   ├── jobcrawl.py                  # 사람인·잡코리아 검색/상세 크롤러
+│   ├── jobcrawl.py                  # 사람인·잡코리아·잡알리오 검색/상세 크롤러
 │   ├── charcount.py                 # 글자수 측정
 │   ├── precheck.py                  # 제출 전 자동 검사
 │   ├── salary.py                    # 연봉 실수령액·오퍼 비교
 │   └── tracker.py                   # 마감 목록·.ics·현황판
 └── templates/tracker.csv            # 지원 현황 기록 (UTF-8 BOM, Excel 호환)
-tests/                               # pytest 125개
+tests/                               # pytest 160개
 ```
 
 ## 스크립트
@@ -57,8 +57,10 @@ tests/                               # pytest 125개
 설치 경로 기준 예시(`S=~/.claude/skills/job-application-kr/scripts`).
 
 ```bash
-# 공고 찾기 (사람인+잡코리아, 사이트당 2페이지)
+# 공고 찾기 (기본: 사람인+잡코리아+잡알리오, 사이트당 2페이지)
 python $S/jobcrawl.py search "백엔드 개발자" --pages 2 --exclude-ads
+python $S/jobcrawl.py search "행정" --site jobalio            # 공공기관만
+python $S/jobcrawl.py search "회계" --json --out 결과.json      # 파일로 저장
 python $S/jobcrawl.py detail "https://www.saramin.co.kr/zf_user/jobs/relay/view?rec_idx=..."
 
 # 자소서 글자수 (문항별, 제목의 "(제한 1,000자)" 자동 인식)
@@ -75,6 +77,17 @@ python $S/tracker.py list applications/tracker.csv --days 14
 python $S/tracker.py ics applications/tracker.csv --out 마감일.ics      # 캘린더 앱에서 가져오기
 python $S/tracker.py report applications/tracker.csv --out 현황판.html
 ```
+
+### Windows(PowerShell)에서 쓰기
+```powershell
+$S = "$env:USERPROFILE\.claude\skills\job-application-kr\scripts"
+python "$S\jobcrawl.py" search "행정" --site jobalio --out 공고.md
+python "$S\salary.py" "현직=3200" "A공사=3600"
+```
+- `python`이 없으면 `py`로 실행한다(python.org 설치본의 실행기).
+- 한글 출력은 PowerShell·cmd(cp949)와 Git Bash·WSL(UTF-8) 모두 깨지지 않게 셸에 맞춰 나온다. 직접 고정하려면 `PYTHONIOENCODING` 환경 변수를 쓴다.
+- 결과를 파일로 남길 때는 `>` 리다이렉트보다 `--out`이 안전하다(항상 UTF-8로 저장).
+- `charcount.py`에 PowerShell 파이프로 한글을 넘기면 PowerShell 5.1이 글자를 바꿀 수 있다. 파일 경로로 넘긴다.
 
 ### 크롤러 원칙
 - 요청 전에 robots.txt(RFC 9309)를 읽고 금지 경로는 가져오지 않는다. robots.txt를 읽을 수 없으면 금지로 본다(원티드·리멤버는 이 이유로 제외). 리다이렉트도 한 단계씩 다시 검사한다.
@@ -132,6 +145,7 @@ pytest tests -q
 ## 검수 이력
 - 2026-10-21: 가상 인물 프로필과 실제 공고 2건(경력직 백엔드)으로 평가 → 이력서 → 자소서 전 과정을 돌리고, 별도 검수 에이전트가 규칙·법령 표현·스크립트를 점검. 발견된 25건을 반영.
 - 2026-10-22: 읽기 전용 서브에이전트 3개 이식 후 실제 공고로 동작 검증, 지적 사항 반영. 크롤러·자동 검사기·연봉 계산기·마감 관리 도구·문항 유형집 추가. 크롤러는 사람인·잡코리아 실제 검색(40건+24건)과 상세 페이지로 확인.
+- 2026-10-22 (사용성 점검): 신입·공공기관 시나리오와 한국어 Windows 기본 환경으로 다시 써 봄. 고친 것: PowerShell(cp949)에서 결과를 파이프·파일로 넘기면 한글이 깨지던 문제(셸별 인코딩 자동 선택), 사람인·잡코리아에 공공기관 공고가 거의 없던 문제(잡알리오 지원 추가, 실제 검색 37건 확인), 결과 표에 고용형태(정규직·채용형/체험형 인턴·기간제) 열 추가, 공공기관 필수 조건(한국사능력검정·정년·즉시 근무)과 가산점을 평가 기준·프로필에 추가, 공공기관 자소서 문항이 첨부 입사지원서에 있다는 안내, 이력서 없는 신입을 위한 질문형 프로필 작성, 글자수가 제한의 70% 미만일 때 안내.
 
 ## 주의
 - 실제 지원서 제출, 포털 로그인은 사용자가 직접 한다.

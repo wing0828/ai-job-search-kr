@@ -19,6 +19,7 @@
 국세청 간이세액표와 월 수천~수만 원 차이가 날 수 있는 **추정치**다. 연말정산 결과와도 다르다.
 """
 import argparse
+import os
 import sys
 from typing import NamedTuple
 
@@ -162,10 +163,28 @@ def render(offers: list, results: list) -> str:
     return "\n".join(lines + tail)
 
 
+def console_encoding(stream) -> str:
+    """출력 인코딩. 셸마다 기대가 달라서 한 가지로 고정하면 한쪽에서 한글이 깨진다.
+    - PYTHONIOENCODING을 지정했으면 그대로
+    - Git Bash·WSL·맥/리눅스 터미널(MSYSTEM, TERM 있음) → UTF-8
+    - PowerShell·cmd → 현재 인코딩(한국어 Windows는 cp949)이 한글을 쓸 수 있으면 그대로
+    """
+    current = stream.encoding or "utf-8"
+    if os.environ.get("PYTHONIOENCODING"):
+        return current
+    if os.environ.get("MSYSTEM") or os.environ.get("TERM"):
+        return "utf-8"
+    try:
+        "한글".encode(current)
+        return current
+    except (LookupError, UnicodeEncodeError):
+        return "utf-8"
+
+
 def main(argv=None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
-            stream.reconfigure(encoding="utf-8")
+            stream.reconfigure(encoding=console_encoding(stream), errors="replace")
     p = argparse.ArgumentParser(description="연봉 실수령액 추정·오퍼 비교 (만원 단위 입력)")
     p.add_argument("offers", nargs="+", help='예: "A사=5200,퇴직금포함"')
     args = p.parse_args(argv)

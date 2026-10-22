@@ -246,6 +246,83 @@ JOBKOREA = """
 """
 
 
+JOBALIO = """
+<table><thead><tr><th>번호</th></tr></thead><tbody>
+<tr>
+ <td><input type="checkbox" name="idxs" value="306272" /></td><td>37</td>
+ <td class="left"><a href="/recruitview.do?idx=306272" target="_blank"/>NCS 및 블라인드 기반 신입직원(채용형 인턴) 채용 공고</a></td>
+ <td>울산항만공사</td><td>
+   울산 </td><td>
+   청년인턴(채용형)
+ 외 1 </td><td>2026.10.22</td><td>26.11.05</br><span class="orange">D-13</span></td>
+ <td><span class="orange"> 진행중</span></td>
+</tr>
+</tbody></table>
+"""
+
+
+def test_parse_jobalio_fields():
+    jobs = jobcrawl.parse_jobalio(JOBALIO, TODAY)
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job["company"] == "울산항만공사" and job["location"] == "울산"
+    assert job["employment"] == "청년인턴(채용형) 외 1"
+    assert job["deadline"] == "2026-11-05"
+    assert job["url"] == "https://job.alio.go.kr/recruitview.do?idx=306272"
+    assert job["title"].startswith("NCS 및 블라인드")
+
+
+def test_default_sites_include_jobalio():
+    args = jobcrawl.build_parser().parse_args(["search", "행정"])
+    assert "jobalio" in args.site.split(",")
+
+
+def test_search_out_writes_utf8_file(tmp_path, capsys):
+    page = jobcrawl.SITES["saramin"][0].format(q="a", page=1)
+    fetcher, _, _ = make_fetcher({page: (200, "utf-8", SARAMIN.encode())})
+    out = tmp_path / "결과.json"
+    assert jobcrawl.main(["search", "a", "--site", "saramin", "--json", "--out", str(out)],
+                         fetcher=fetcher, today=TODAY) == 0
+    assert "(주)예시" in out.read_text(encoding="utf-8")
+
+
+def test_table_has_employment_column():
+    table = jobcrawl.to_table(jobcrawl.parse_jobalio(JOBALIO, TODAY))
+    assert "고용형태" in table.splitlines()[0] and "청년인턴(채용형)" in table
+
+
+class FakeStream:
+    def __init__(self, encoding):
+        self.encoding = encoding
+
+
+@pytest.mark.parametrize("env, encoding, expected", [
+    ({}, "cp949", "cp949"),                       # PowerShell/cmd (한국어 Windows)
+    ({"MSYSTEM": "MINGW64"}, "cp949", "utf-8"),   # Git Bash
+    ({"TERM": "xterm"}, "cp949", "utf-8"),        # WSL·맥·리눅스 터미널
+    ({}, "cp1252", "utf-8"),                      # 한글을 못 쓰는 인코딩
+    ({"PYTHONIOENCODING": "utf-8"}, "utf-8", "utf-8"),
+    ({"PYTHONIOENCODING": "cp949", "TERM": "x"}, "cp949", "cp949"),  # 사용자 지정 우선
+])
+@pytest.mark.parametrize("module", ["jobcrawl", "charcount", "precheck", "salary", "tracker"])
+def test_console_encoding_by_shell(monkeypatch, env, encoding, expected, module):
+    for key in ("MSYSTEM", "TERM", "PYTHONIOENCODING"):
+        monkeypatch.delenv(key, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    mod = load(module) if module == "charcount" else globals()[module]
+    assert mod.console_encoding(FakeStream(encoding)) == expected
+
+
+def test_charcount_warns_when_too_short(tmp_path, capsys, monkeypatch):
+    charcount = load("charcount")
+    f = tmp_path / "a.md"
+    f.write_text("## 1 (제한 100자)\n" + "가" * 50 + "\n", encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["charcount.py", str(f), "--sections"])
+    assert charcount.main() == 0
+    assert "70% 미만" in capsys.readouterr().out
+
+
 def test_parse_saramin_fields():
     jobs = jobcrawl.parse_saramin(SARAMIN, TODAY)
     assert len(jobs) == 2
